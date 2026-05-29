@@ -2,20 +2,40 @@
 <img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
 </div>
 
-# Run and deploy your AI Studio app
+# AI记账助手
 
-This contains everything you need to run your app locally.
+一款基于Gemini AI的智能记账应用，支持AI智能记账、AI生成图表和AI生成报表。
 
-View your app in AI Studio: https://ai.studio/apps/2e953666-0de2-4803-ba4a-15f43c3e1ef4
+## 运行项目
 
-## Run Locally
+**环境要求:** [Android Studio](https://developer.android.com/studio) / JDK 21
 
-**Prerequisites:**  [Android Studio](https://developer.android.com/studio)
+### Android Studio
 
+1. 用Android Studio打开项目
+2. 等待Gradle同步完成
+3. 运行到模拟器或真机
 
-1. Open Android Studio
-2. Select **Open** and choose the directory containing this project
-3. Allow Android Studio to fix any incompatibilities as it imports the project.
-4. Create a file named `.env` in the project directory and set `GEMINI_API_KEY` in that file to your Gemini API key (see `.env.example` for an example)
-5. Remove this line from the app's `build.gradle.kts` file: `signingConfig = signingConfigs.getByName("debugConfig")`
-6. Run the app on an emulator or physical device
+### 命令行
+
+```bash
+./gradlew assembleDebug
+adb install app/build/outputs/apk/debug/app-debug.apk
+```
+
+## 发布版本
+
+推送tag自动触发GitHub Actions构建：
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+构建产物会作为GitHub Release附件自动发布。
+
+## 功能特性
+
+- AI智能记账：描述消费内容，自动识别类别
+- AI图表生成：智能生成消费统计图表
+- AI报表生成：自动生成月度消费分析报告
