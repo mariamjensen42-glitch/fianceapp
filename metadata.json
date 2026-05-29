@@ -1,0 +1,8 @@
+{
+  "name": "Remix: 记账助手",
+  "description": "便携且功能强大的每日收支记账与统计分析助手",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
