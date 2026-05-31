@@ -1,134 +1,192 @@
 package com.example.ui
 
-import androidx.compose.animation.*
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.AddCircleOutline
+import androidx.compose.material.icons.filled.AddCard
+import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.ui.components.AIBookkeepingCard
+import com.example.ui.components.DashboardHeader
+import com.example.ui.components.LedgerCalendarDialog
+import com.example.ui.components.TopUserHeader
 import com.example.ui.tabs.AddTransactionTab
 import com.example.ui.tabs.AnalyticsTab
+import com.example.ui.tabs.SettingsTab
 import com.example.ui.tabs.SubscriptionListTab
 import com.example.ui.tabs.TransactionListTab
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LedgerApp(viewModel: LedgerViewModel, modifier: Modifier = Modifier) {
-    val currentTab = viewModel.currentTab
-    val transactions by viewModel.transactions.collectAsState()
-    val stats by viewModel.stats.collectAsState()
-    val expenseBreakdown by viewModel.expenseBreakdown.collectAsState()
-    val incomeBreakdown by viewModel.incomeBreakdown.collectAsState()
-    val dailyTrend by viewModel.dailyTrend.collectAsState()
+fun LedgerApp(
+    viewModel: LedgerViewModel,
+    modifier: Modifier = Modifier
+) {
+    // Collect active flow values
+    val allTxs by viewModel.transactions.collectAsState()
+    val filteredTxs by viewModel.filteredTransactions.collectAsState()
+    val dateFilterVal by viewModel.dateFilter.collectAsState()
+    val isParsingAI by viewModel.isParsingAI.collectAsState()
+    val aiParsingError by viewModel.aiParsingError.collectAsState()
 
-    // Budget collecting states
-    val totalBudget by viewModel.totalBudget.collectAsState()
-    val categoryBudgets by viewModel.categoryBudgets.collectAsState()
-    val currentMonthExpenseTotal by viewModel.currentMonthExpenseTotal.collectAsState()
-    val currentMonthCategoryExpenses by viewModel.currentMonthCategoryExpenses.collectAsState()
-    val allExpenseCategories by viewModel.allExpenseCategories.collectAsState()
+    var selectedTabIndex by remember { mutableStateOf(0) }
+    var showCalendarDialog by remember { mutableStateOf(false) }
 
-    // Reimbursement tracker states
-    val pendingReimbursementAmount by viewModel.pendingReimbursementAmount.collectAsState()
-    val reimbursedAmount by viewModel.reimbursedAmount.collectAsState()
+    val dateFilterLabel = when (dateFilterVal) {
+        DateRangeFilter.ALL -> "全部日期 (All)"
+        DateRangeFilter.TODAY -> "今天 (Today)"
+        DateRangeFilter.THIS_WEEK -> "本周 (This Week)"
+        DateRangeFilter.THIS_MONTH -> "本月 (This Month)"
+        DateRangeFilter.CUSTOM -> "自定义区间 (Custom)"
+    }
 
     Scaffold(
-        modifier = modifier.fillMaxSize(),
-        floatingActionButton = {
-            if (currentTab != 2) {
-                FloatingActionButton(
-                    onClick = { viewModel.currentTab = 2 },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.testTag("fab_add")
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "记一笔")
-                }
-            }
-        },
+        modifier = modifier.fillMaxSize().testTag("ledger_scaffold"),
         bottomBar = {
             NavigationBar(
-                modifier = Modifier.testTag("ledger_bottom_navigation"),
-                tonalElevation = 8.dp
+                modifier = Modifier.testTag("ledger_bottom_nav"),
+                containerColor = MaterialTheme.colorScheme.surface
             ) {
                 NavigationBarItem(
-                    selected = currentTab == 0,
-                    onClick = { viewModel.currentTab = 0 },
-                    icon = { Icon(Icons.Default.Home, contentDescription = "资产") },
-                    label = { Text("资产") },
-                    modifier = Modifier.testTag("tab_transactions")
+                    selected = selectedTabIndex == 0,
+                    onClick = { selectedTabIndex = 0 },
+                    icon = { Icon(Icons.Default.FormatListBulleted, contentDescription = "Tab list") },
+                    label = { Text("明细 (List)", fontWeight = FontWeight.Bold) },
+                    modifier = Modifier.testTag("nav_tab_list")
                 )
                 NavigationBarItem(
-                    selected = currentTab == 1,
-                    onClick = { viewModel.currentTab = 1 },
-                    icon = { Icon(Icons.Default.Refresh, contentDescription = "订阅") },
-                    label = { Text("订阅") },
-                    modifier = Modifier.testTag("tab_subscriptions")
+                    selected = selectedTabIndex == 1,
+                    onClick = { selectedTabIndex = 1 },
+                    icon = { Icon(Icons.Default.AddCircleOutline, contentDescription = "Tab add") },
+                    label = { Text("记账 (Add)", fontWeight = FontWeight.Bold) },
+                    modifier = Modifier.testTag("nav_tab_add")
                 )
                 NavigationBarItem(
-                    selected = currentTab == 3,
-                    onClick = { viewModel.currentTab = 3 },
-                    icon = { Icon(Icons.Default.Star, contentDescription = "统计") },
-                    label = { Text("统计") },
-                    modifier = Modifier.testTag("tab_analytics")
+                    selected = selectedTabIndex == 2,
+                    onClick = { selectedTabIndex = 2 },
+                    icon = { Icon(Icons.Default.AddCard, contentDescription = "Tab subs") },
+                    label = { Text("周期 (Subs)", fontWeight = FontWeight.Bold) },
+                    modifier = Modifier.testTag("nav_tab_subs")
+                )
+                NavigationBarItem(
+                    selected = selectedTabIndex == 3,
+                    onClick = { selectedTabIndex = 3 },
+                    icon = { Icon(Icons.Default.PieChart, contentDescription = "Tab stats") },
+                    label = { Text("图表 (Chart)", fontWeight = FontWeight.Bold) },
+                    modifier = Modifier.testTag("nav_tab_analytics")
+                )
+                NavigationBarItem(
+                    selected = selectedTabIndex == 4,
+                    onClick = { selectedTabIndex = 4 },
+                    icon = { Icon(Icons.Default.Settings, contentDescription = "Tab settings") },
+                    label = { Text("设置 (Settings)", fontWeight = FontWeight.Bold) },
+                    modifier = Modifier.testTag("nav_tab_settings")
                 )
             }
         }
     ) { innerPadding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
                 .padding(innerPadding)
+                .padding(horizontal = 16.dp)
+                .padding(top = 16.dp)
         ) {
-            // Screen content switching smoothly
-            when (currentTab) {
-                0 -> TransactionListTab(
-                    stats = stats,
-                    transactions = transactions,
-                    onDelete = { viewModel.deleteTransaction(it) },
-                    onLoadSample = { viewModel.loadSampleData() },
-                    aiInputText = viewModel.aiInputText,
-                    isAiLoading = viewModel.isAiLoading,
-                    aiParsedResult = viewModel.aiParsedResult,
-                    aiErrorMessage = viewModel.aiErrorMessage,
-                    onAiInputTextChange = { viewModel.aiInputText = it },
-                    onParseClick = { viewModel.parseInputWithAi(viewModel.aiInputText) },
-                    onConfirmSave = { viewModel.confirmAndSaveAiResult() },
-                    onCancel = { viewModel.cancelAiResult() },
-                    getCategoryDef = { viewModel.getCategoryDef(it) },
-                    totalBudget = totalBudget,
-                    categoryBudgets = categoryBudgets,
-                    currentMonthExpenseTotal = currentMonthExpenseTotal,
-                    currentMonthCategoryExpenses = currentMonthCategoryExpenses,
-                    allExpenseCategories = allExpenseCategories,
-                    onUpdateBudget = { id, amt -> viewModel.updateBudget(id, amt) },
-                    pendingReimbursementAmount = pendingReimbursementAmount,
-                    reimbursedAmount = reimbursedAmount,
-                    onToggleReimbursementStatus = { viewModel.toggleReimbursementStatus(it) },
-                    onToggleIsReimbursable = { viewModel.toggleIsReimbursable(it) }
-                )
-                1 -> SubscriptionListTab(
-                    subscriptions = viewModel.subscriptions.collectAsState().value,
-                    onDelete = { viewModel.deleteSubscription(it) },
-                    onRenew = { viewModel.renewSubscription(it) }
-                )
-                2 -> AddTransactionTab(viewModel = viewModel)
-                3 -> AnalyticsTab(
-                    transactions = transactions,
-                    expenseBreakdown = expenseBreakdown,
-                    incomeBreakdown = incomeBreakdown,
-                    dailyTrend = dailyTrend,
-                    aiReportContent = viewModel.aiReportContent,
-                    isGeneratingReport = viewModel.isGeneratingReport,
-                    reportErrorMessage = viewModel.reportErrorMessage,
-                    onGenerateReport = { viewModel.generateFinancialReport() }
-                )
+            // Welcome Greeting Banner
+            TopUserHeader()
+
+            // Main Contents switching tab
+            when (selectedTabIndex) {
+                0 -> {
+                    // Dashboard banner inside list to show aggregated stats nicely!
+                    DashboardHeader(
+                        transactions = filteredTxs,
+                        dateRangeLabel = dateFilterLabel,
+                        onFilterClick = { showCalendarDialog = true },
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+
+                    TransactionListTab(
+                        viewModel = viewModel,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                1 -> {
+                    // Unified regular Add + AI Bookkeeping screen
+                    Column(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        AIBookkeepingCard(
+                            isParsing = isParsingAI,
+                            parsingError = aiParsingError,
+                            onParseText = { text, onDone ->
+                                viewModel.parseAndAddTransactionsAI(text, onDone)
+                            },
+                            modifier = Modifier.padding(bottom = 18.dp)
+                        )
+
+                        AddTransactionTab(
+                            viewModel = viewModel,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                2 -> {
+                    SubscriptionListTab(viewModel = viewModel)
+                }
+
+                3 -> {
+                    AnalyticsTab(viewModel = viewModel)
+                }
+
+                4 -> {
+                    SettingsTab(viewModel = viewModel)
+                }
             }
+        }
+
+        // Modal triggers
+        if (showCalendarDialog) {
+            LedgerCalendarDialog(
+                currentFilter = dateFilterVal,
+                onFilterSelected = { filter, start, end ->
+                    viewModel.dateFilter.value = filter
+                    viewModel.customStartDate.value = start
+                    viewModel.customEndDate.value = end
+                },
+                onDismissRequest = { showCalendarDialog = false }
+            )
         }
     }
 }

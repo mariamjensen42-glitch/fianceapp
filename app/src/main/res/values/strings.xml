@@ -1,3 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">记账助手</string>
+    <string name="app_name">Remix: 记账助手</string>
+    <string name="add_transaction">添加账目</string>
+    <string name="edit_transaction">编辑账目</string>
+    <string name="analytics">统计分析</string>
+    <string name="subscriptions">周期订阅</string>
+    <string name="settings">设置</string>
+    <string name="ai_assistant">AI 助记</string>
 </resources>

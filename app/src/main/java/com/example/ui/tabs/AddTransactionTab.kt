@@ -1,541 +1,736 @@
 package com.example.ui.tabs
 
-import android.graphics.ImageDecoder
-import android.net.Uri
-import android.os.Build
-import android.provider.MediaStore
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.Category
+import com.example.data.TransactionType
+import com.example.data.CurrencyConfig
 import com.example.ui.LedgerViewModel
+import com.example.ui.components.CurrencyRateSelector
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AddTransactionTab(
     viewModel: LedgerViewModel,
     modifier: Modifier = Modifier
 ) {
-    val scrollState = rememberScrollState()
-    val controller = LocalSoftwareKeyboardController.current
-    val context = LocalContext.current
+    var amountText by remember { mutableStateOf("") }
+    var noteText by remember { mutableStateOf("") }
+    var selectedType by remember { mutableStateOf(TransactionType.EXPENSE) }
+    var selectedCategory by remember { mutableStateOf(Category.FOOD) }
 
-    val expenseCats by viewModel.allExpenseCategories.collectAsState()
-    val incomeCats by viewModel.allIncomeCategories.collectAsState()
-    val activeTags by viewModel.activeTags.collectAsState()
+    var selectedCurrency by remember { mutableStateOf("CNY") }
+    var exchangeRateText by remember { mutableStateOf("1.0") }
 
-    val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) {
-            val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, uri))
-            } else {
-                MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
-            }
-            viewModel.parseImageWithAi(bitmap)
-        }
-    }
+    var formError by remember { mutableStateOf<String?>(null) }
+    var addSuccess by remember { mutableStateOf(false) }
 
-    if (viewModel.isAiImageLoading) {
-        AlertDialog(
-            onDismissRequest = { },
-            title = { Text("智能解析账单中") },
-            text = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text("AI正在读取您的截图...")
-                }
-            },
-            confirmButton = {}
-        )
-    }
+    val scope = rememberCoroutineScope()
 
-    if (viewModel.aiImageErrorMessage.isNotEmpty()) {
-        AlertDialog(
-            onDismissRequest = { viewModel.aiImageErrorMessage = "" },
-            title = { Text("解析失败") },
-            text = { Text(viewModel.aiImageErrorMessage) },
-            confirmButton = {
-                TextButton(onClick = { viewModel.aiImageErrorMessage = "" }) {
-                    Text("确定")
-                }
-            }
-        )
-    }
+    val quickTemplates by viewModel.quickTemplates.collectAsState()
+    var selectedTemplateForAction by remember { mutableStateOf<com.example.data.QuickTemplate?>(null) }
+    var showSaveAsTemplateDialog by remember { mutableStateOf(false) }
 
-    if (viewModel.aiImageParsedResult != null) {
-        AlertDialog(
-            onDismissRequest = { viewModel.cancelAiImageResult() },
-            title = { Text("AI 账单解析成功") },
-            text = {
-                val res = viewModel.aiImageParsedResult!!
-                Column {
-                    Text("已成功从截图提取记账信息：", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("类型: ${if(res.type == "INCOME") "收入" else "支出"}")
-                    Text("金额: ¥${res.amount}")
-                    Text("支付账户: ${res.account}")
-                    Text("项目名: ${res.title}")
-                    Text("推断分类: ${res.category}")
-                    if (!res.notes.isNullOrEmpty()) {
-                        Text("备注信息: ${res.notes}")
-                    }
-                }
-            },
-            confirmButton = {
-                Button(onClick = { viewModel.confirmAndSaveAiImageResult() }) {
-                    Text("确认入账")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { viewModel.cancelAiImageResult() }) {
-                    Text("取消并重新填单")
-                }
-            }
-        )
+    // Align category when type changes
+    LaunchedEffect(selectedType) {
+        selectedCategory = if (selectedType == TransactionType.EXPENSE) Category.FOOD else Category.SALARY
     }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 80.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .verticalScroll(rememberScrollState())
+            .padding(bottom = 16.dp)
+            .testTag("add_transaction_tab")
     ) {
-        // Expense/Income/Subscription Type Selector
+        // --- 1. Quick templates deck ---
+        if (quickTemplates.isNotEmpty()) {
+            Text(
+                text = "高频场景极速记账 (Quick Log Templates)",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Text(
+                text = "点击可触发：一键直接入账（记录至系统），或载入数据修改",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            androidx.compose.foundation.lazy.LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+                    .testTag("quick_templates_row")
+            ) {
+                items(quickTemplates.size) { index ->
+                    val template = quickTemplates[index]
+                    val cat = try { Category.valueOf(template.category) } catch (e: Exception) { Category.fromName(template.category) }
+                    val emoji = when (cat) {
+                        Category.FOOD -> "🍔"
+                        Category.SHOPPING -> "🛒"
+                        Category.TRANSPORT -> "🚇"
+                        Category.ENTERTAINMENT -> "🎮"
+                        Category.BILLS -> "🧾"
+                        Category.SALARY -> "💰"
+                        Category.INVESTMENT -> "📈"
+                        Category.OTHER -> "📝"
+                    }
+
+                    Card(
+                        modifier = Modifier
+                            .width(135.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { selectedTemplateForAction = template }
+                            .testTag("quick_template_item_${template.id}"),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                        ),
+                        shape = RoundedCornerShape(16.dp),
+                        border = androidx.compose.foundation.BorderStroke(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(cat.color.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(emoji, fontSize = 16.sp)
+                                }
+                                if (template.usageCount > 0) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "${template.usageCount}次",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = template.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+
+                            Spacer(modifier = Modifier.height(2.dp))
+
+                            val prefix = if (template.type == "EXPENSE") "-" else "+"
+                            val priceColor = if (template.type == "EXPENSE") com.example.ui.theme.ColorExpense else com.example.ui.theme.ColorIncome
+                            val formattedPrice = CurrencyConfig.formatPrice(template.amount, template.currency)
+                            Text(
+                                text = "$prefix $formattedPrice",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = priceColor
+                            )
+
+                            if (template.note.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = template.note,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+        }
+
+        // --- 2. Manual logging header and input forms ---
+        Text(
+            text = "手动收支记账 (Manual Log entry)",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Expense vs Income tabs selector
         TabRow(
-            selectedTabIndex = when(viewModel.typeInput) {
-                "EXPENSE" -> 0
-                "INCOME" -> 1
-                else -> 2
-            },
+            selectedTabIndex = if (selectedType == TransactionType.EXPENSE) 0 else 1,
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
             modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp)),
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                .clip(RoundedCornerShape(12.dp))
+                .testTag("add_tx_type_tabs")
         ) {
             Tab(
-                selected = viewModel.typeInput == "EXPENSE",
-                onClick = { viewModel.updateSelectedType("EXPENSE") },
-                text = { Text("支出", fontWeight = FontWeight.Bold) },
-                modifier = Modifier.testTag("type_toggle_expense")
-            )
+                selected = selectedType == TransactionType.EXPENSE,
+                onClick = { selectedType = TransactionType.EXPENSE },
+                modifier = Modifier.testTag("tab_expense")
+            ) {
+                Box(
+                    modifier = Modifier.padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("支出 (Expense)", fontWeight = FontWeight.Bold)
+                }
+            }
             Tab(
-                selected = viewModel.typeInput == "INCOME",
-                onClick = { viewModel.updateSelectedType("INCOME") },
-                text = { Text("收入", fontWeight = FontWeight.Bold) },
-                modifier = Modifier.testTag("type_toggle_income")
-            )
-            Tab(
-                selected = viewModel.typeInput == "SUBSCRIPTION",
-                onClick = { viewModel.updateSelectedType("SUBSCRIPTION") },
-                text = { Text("订阅", fontWeight = FontWeight.Bold) },
-                modifier = Modifier.testTag("type_toggle_subscription")
-            )
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // AI Screenshot shortcut
-        OutlinedButton(
-            onClick = {
-                pickMedia.launch(
-                    androidx.activity.result.PickVisualMediaRequest(
-                        ActivityResultContracts.PickVisualMedia.ImageOnly
-                    )
-                )
-            },
-            modifier = Modifier.fillMaxWidth().height(50.dp),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Text("📷", fontSize = 18.sp)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("上传截图，让AI帮忙记账", fontWeight = FontWeight.Bold)
-        }
-
-        if (viewModel.typeInput == "SUBSCRIPTION") {
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                FilterChip(
-                    selected = viewModel.cycleInput == "MONTHLY",
-                    onClick = { viewModel.cycleInput = "MONTHLY" },
-                    label = { Text("按月订阅") }
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-                FilterChip(
-                    selected = viewModel.cycleInput == "YEARLY",
-                    onClick = { viewModel.cycleInput = "YEARLY" },
-                    label = { Text("按年订阅") }
-                )
+                selected = selectedType == TransactionType.INCOME,
+                onClick = { selectedType = TransactionType.INCOME },
+                modifier = Modifier.testTag("tab_income")
+            ) {
+                Box(
+                    modifier = Modifier.padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("收入 (Income)", fontWeight = FontWeight.Bold)
+                }
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        // Large Amount input field
+        // Amount Input Row
         OutlinedTextField(
-            value = viewModel.amountInput,
-            onValueChange = { input ->
-                if (input.isEmpty() || input.matches(Regex("^\\d*\\.?\\d{0,2}$"))) {
-                    viewModel.amountInput = input
+            value = amountText,
+            onValueChange = {
+                if (it.isEmpty() || it.toDoubleOrNull() != null || it.endsWith(".")) {
+                    amountText = it
+                    formError = null
                 }
             },
-            label = { Text("金额") },
+            label = { Text("交易金额 (Amount)") },
             placeholder = { Text("0.00") },
-            leadingIcon = { Text("¥", fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp)) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            textStyle = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
             singleLine = true,
             modifier = Modifier
                 .fillMaxWidth()
-                .testTag("amount_input"),
-            colors = OutlinedTextFieldDefaults.colors()
+                .testTag("add_tx_amount_field"),
+            shape = RoundedCornerShape(14.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline
+            )
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Currency and Rate Selector Component
+        CurrencyRateSelector(
+            amountText = amountText,
+            selectedCurrency = selectedCurrency,
+            onCurrencyChange = { selectedCurrency = it },
+            exchangeRateText = exchangeRateText,
+            onExchangeRateChange = { exchangeRateText = it }
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Title text Input field
-        OutlinedTextField(
-            value = viewModel.titleInput,
-            onValueChange = { viewModel.titleInput = it },
-            label = { Text("账单明细 (如: 午餐, 打车, 发工资)") },
-            placeholder = { Text("添加备注描述...") },
-            singleLine = true,
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("title_input"),
-            colors = OutlinedTextFieldDefaults.colors()
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Custom tags input field
-        OutlinedTextField(
-            value = viewModel.tagsInput,
-            onValueChange = { viewModel.tagsInput = it },
-            label = { Text("项目/标签 (多个用空格分隔)") },
-            placeholder = { Text("如: #端午旅行 #工作报销") },
-            singleLine = true,
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("tags_input"),
-            colors = OutlinedTextFieldDefaults.colors()
+        // Choose category title
+        Text(
+            text = "选择账单分类 (Category)",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground
         )
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Preset active tags suggestions
-        if (activeTags.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "快捷标签: ",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    activeTags.forEach { tag ->
-                        Card(
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-                            ),
-                            shape = RoundedCornerShape(8.dp),
+        // Category Cards Grid FlowRow
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Category.values()
+                .filter { it.defaultType == selectedType || it == Category.OTHER }
+                .forEach { cat ->
+                    val isSelected = selectedCategory == cat
+                    Card(
+                        modifier = Modifier
+                            .padding(vertical = 4.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { selectedCategory = cat }
+                            .testTag("select_category_${cat.name}"),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isSelected) cat.color.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surface
+                        ),
+                        border = if (isSelected) androidx.compose.foundation.BorderStroke(
+                            1.5.dp,
+                            cat.color
+                        ) else null
+                    ) {
+                        Row(
                             modifier = Modifier
-                                .clickable {
-                                    val current = viewModel.tagsInput.trim()
-                                    if (!current.contains(tag)) {
-                                        viewModel.tagsInput = if (current.isEmpty()) tag else "$current $tag"
-                                    }
-                                }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(CircleShape)
+                                    .background(cat.color)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = tag,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                text = cat.displayName,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) cat.color else MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
                 }
-            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Multi-Account (Assets) selector
-        Text(
-            text = "支付账户 / 资产源",
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-        Row(
+        // Note Input Card
+        OutlinedTextField(
+            value = noteText,
+            onValueChange = { noteText = it },
+            label = { Text("说明备注 (Note)") },
+            placeholder = { Text("记下一笔账，留住细节...") },
+            singleLine = true,
             modifier = Modifier
                 .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            val accounts = listOf("微信钱包", "支付宝", "储蓄卡", "信用卡", "现金")
-            accounts.forEach { accountItem ->
-                val isSelected = viewModel.accountInput == accountItem
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { viewModel.accountInput = accountItem },
-                    label = { Text(accountItem) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                )
-            }
-        }
-
-        if (viewModel.typeInput == "EXPENSE") {
-            Spacer(modifier = Modifier.height(16.dp))
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("reimbursement_input_card"),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
-                ),
-                shape = RoundedCornerShape(12.dp),
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                )
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("💼", fontSize = 20.sp, modifier = Modifier.padding(end = 8.dp))
-                            Column {
-                                Text(
-                                    text = "需要报销",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "选中后将支持报销核销跟踪",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                                )
-                            }
-                        }
-                        Switch(
-                            checked = viewModel.isReimbursableInput,
-                            onCheckedChange = { viewModel.isReimbursableInput = it },
-                            modifier = Modifier.testTag("reimbursement_toggle_switch")
-                        )
-                    }
-
-                    if (viewModel.isReimbursableInput) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        HorizontalDivider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
-                        Spacer(modifier = Modifier.height(12.dp))
-                        
-                        Text(
-                            text = "当前报销季度进度",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            FilterChip(
-                                selected = viewModel.reimbursementStatusInput == "PENDING",
-                                onClick = { viewModel.reimbursementStatusInput = "PENDING" },
-                                label = { Text("待报销 (垫付中)") },
-                                modifier = Modifier.weight(1f).testTag("status_chip_pending")
-                            )
-                            FilterChip(
-                                selected = viewModel.reimbursementStatusInput == "REIMBURSED",
-                                onClick = { viewModel.reimbursementStatusInput = "REIMBURSED" },
-                                label = { Text("已报销 (已收到打款)") },
-                                modifier = Modifier.weight(1f).testTag("status_chip_reimbursed")
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // Category grid header with inline custom addition
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = "选择分类",
-                textAlign = TextAlign.Start,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                .testTag("add_tx_note_field"),
+            shape = RoundedCornerShape(14.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline
             )
+        )
 
-            Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = viewModel.customCategoryNameInput,
-                        onValueChange = { viewModel.customCategoryNameInput = it },
-                        placeholder = { Text("新增自定义分类...") },
-                        singleLine = true,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(52.dp),
-                        textStyle = MaterialTheme.typography.bodyMedium,
-                        colors = OutlinedTextFieldDefaults.colors()
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = { viewModel.addCustomCategory(isExpense = viewModel.typeInput == "EXPENSE") },
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.height(44.dp)
-                    ) {
-                        Text("+ 新分类", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Dynamic categories lists based on selected type
-        val currentCategories = if (viewModel.typeInput == "EXPENSE" || viewModel.typeInput == "SUBSCRIPTION") {
-            expenseCats
-        } else {
-            incomeCats
-        }
-
-        // Beautiful Grid representation of category options
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
-        ) {
-            Column(
+        // Alerts visibility blocks
+        AnimatedVisibility(visible = formError != null, enter = fadeIn(), exit = fadeOut()) {
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(8.dp)
+                    .padding(bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                val chunked = currentCategories.chunked(3)
-                chunked.forEach { rowCategoryDefs ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceAround
-                    ) {
-                        rowCategoryDefs.forEach { cat ->
-                            val isSelected = viewModel.categoryInput == cat.id
-                            val containerBackground = if (isSelected) cat.color else Color.Transparent
-                            val contentColor = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
-
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(containerBackground.copy(alpha = if (isSelected) 1f else 0.15f))
-                                    .clickable { viewModel.categoryInput = cat.id }
-                                    .padding(vertical = 12.dp, horizontal = 4.dp)
-                                    .testTag("category_option_${cat.id}")
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isSelected) Color.White.copy(alpha = 0.25f) else cat.color.copy(alpha = 0.2f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = cat.icon,
-                                        contentDescription = cat.name,
-                                        tint = if (isSelected) Color.White else cat.color,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = cat.name,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = if (isSelected) Color.White else contentColor
-                                )
-                            }
-                        }
-                    }
-                }
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = formError ?: "",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        AnimatedVisibility(visible = addSuccess, enter = fadeIn(), exit = fadeOut()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = Color(0xFF10B981),
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "账目已成功录入系统存储！",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF10B981),
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
 
-        // Save Button
+        // Add Transaction Button
         Button(
             onClick = {
-                controller?.hide()
-                viewModel.saveTransaction()
+                val amt = amountText.toDoubleOrNull()
+                val rate = exchangeRateText.toDoubleOrNull() ?: 1.0
+                if (amt == null || amt <= 0) {
+                    formError = "请输入大于 0 的有效数值金额。"
+                } else if (selectedCurrency != "CNY" && rate <= 0) {
+                    formError = "请输入大于 0 的有效外汇折算汇率系数。"
+                } else {
+                    viewModel.addTransaction(
+                        amount = amt,
+                        type = selectedType,
+                        category = selectedCategory,
+                        note = noteText,
+                        timestamp = System.currentTimeMillis(),
+                        currency = selectedCurrency,
+                        exchangeRate = rate
+                    )
+                    addSuccess = true
+                    amountText = ""
+                    noteText = ""
+                    selectedCurrency = "CNY"
+                    exchangeRateText = "1.0"
+                    scope.launch {
+                        delay(2500)
+                    }
+                }
             },
+            enabled = amountText.isNotBlank(),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary
+            ),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(52.dp)
-                .testTag("save_button"),
-            enabled = viewModel.amountInput.toDoubleOrNull() != null && viewModel.amountInput.toDouble() > 0,
-            shape = RoundedCornerShape(12.dp)
+                .testTag("add_tx_submit_btn")
         ) {
-            Icon(Icons.Default.Check, contentDescription = "保存")
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("完成并保存账单", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Submit add"
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "确认并保存账目",
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        // --- 3. Save as Template helper ---
+        val isSaveTemplateCurrentlyEnabled = amountText.toDoubleOrNull() != null && amountText.toDouble() > 0
+        if (isSaveTemplateCurrentlyEnabled) {
+            Spacer(modifier = Modifier.height(10.dp))
+            androidx.compose.material3.OutlinedButton(
+                onClick = {
+                    showSaveAsTemplateDialog = true
+                },
+                shape = RoundedCornerShape(14.dp),
+                border = androidx.compose.foundation.BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary),
+                colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("add_tx_save_template_btn")
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Save template",
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "将当前数据保存为极速模板",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        // --- 4. Modals and Dialog overlays for templates ---
+        if (selectedTemplateForAction != null) {
+            val template = selectedTemplateForAction!!
+            val cat = try { Category.valueOf(template.category) } catch (e: Exception) { Category.fromName(template.category) }
+            val isExpense = template.type == "EXPENSE"
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { selectedTemplateForAction = null },
+                title = {
+                    Text(
+                        text = "模版记账选项",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "模板：${template.name}",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp).fillMaxWidth()) {
+                                Row(
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("收支类型", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(
+                                        if (isExpense) "支出 (Expense)" else "收入 (Income)",
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isExpense) com.example.ui.theme.ColorExpense else com.example.ui.theme.ColorIncome
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("账单分类", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(cat.displayName, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("记账金额", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    val formattedOriginal = CurrencyConfig.formatPrice(template.amount, template.currency)
+                                    if (template.currency == "CNY") {
+                                        Text(formattedOriginal, fontWeight = FontWeight.ExtraBold)
+                                    } else {
+                                        val converted = CurrencyConfig.formatToCNY(template.amount, template.exchangeRate)
+                                        Text("$formattedOriginal ($converted)", fontWeight = FontWeight.ExtraBold)
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("说明备注", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(template.note.ifBlank { "无" }, fontWeight = FontWeight.Normal)
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                viewModel.useQuickTemplate(template)
+                                selectedTemplateForAction = null
+                                addSuccess = true
+                                scope.launch {
+                                    delay(2000)
+                                    addSuccess = false
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("1键直接入账 (Instantly Log)", fontWeight = FontWeight.Bold)
+                        }
+
+                        androidx.compose.material3.FilledTonalButton(
+                            onClick = {
+                                amountText = template.amount.toString()
+                                selectedType = if (isExpense) TransactionType.EXPENSE else TransactionType.INCOME
+                                selectedCategory = cat
+                                noteText = template.note
+                                selectedCurrency = template.currency
+                                exchangeRateText = template.exchangeRate.toString()
+                                selectedTemplateForAction = null
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("载入到下方表单 (Load into form)", fontWeight = FontWeight.Bold)
+                        }
+
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                viewModel.deleteQuickTemplate(template)
+                                selectedTemplateForAction = null
+                            },
+                            colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("删除此模板", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(
+                        onClick = { selectedTemplateForAction = null }
+                    ) {
+                        Text("关闭")
+                    }
+                }
+            )
+        }
+
+        if (showSaveAsTemplateDialog) {
+            val suggestedName = if (noteText.isNotBlank()) noteText else "常用 ${selectedCategory.displayName}"
+            var tempName by remember { mutableStateOf(suggestedName) }
+            var tempError by remember { mutableStateOf<String?>(null) }
+
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showSaveAsTemplateDialog = false },
+                title = { Text("保存为快速模板", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val originalVal = CurrencyConfig.formatPrice(amountText.toDoubleOrNull() ?: 0.0, selectedCurrency)
+                        val rateHelpText = if (selectedCurrency != "CNY") " (汇率折算后 ≈ ¥${String.format("%.2f", (amountText.toDoubleOrNull() ?: 0.0) * (exchangeRateText.toDoubleOrNull() ?: 1.0))})" else ""
+                        Text(
+                            text = "模板将会保存当前的金额 ($originalVal) 和分类 (${selectedCategory.displayName})$rateHelpText。请输入模板名称：",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        OutlinedTextField(
+                            value = tempName,
+                            onValueChange = {
+                                tempName = it
+                                if (it.isNotBlank()) tempError = null
+                            },
+                            label = { Text("模板名称") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            isError = tempError != null
+                        )
+                        if (tempError != null) {
+                            Text(
+                                text = tempError!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (tempName.isBlank()) {
+                                tempError = "名称不能为空"
+                            } else {
+                                val amt = amountText.toDoubleOrNull() ?: 0.0
+                                viewModel.addQuickTemplate(
+                                    name = tempName,
+                                    amount = amt,
+                                    type = selectedType,
+                                    category = selectedCategory,
+                                    note = noteText,
+                                    currency = selectedCurrency,
+                                    exchangeRate = exchangeRateText.toDoubleOrNull() ?: 1.0
+                                )
+                                showSaveAsTemplateDialog = false
+                            }
+                        }
+                    ) {
+                        Text("确认保存")
+                    }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(
+                        onClick = { showSaveAsTemplateDialog = false }
+                    ) {
+                        Text("取消")
+                    }
+                }
+            )
         }
     }
 }

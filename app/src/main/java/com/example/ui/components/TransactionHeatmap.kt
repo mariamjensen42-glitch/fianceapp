@@ -1,182 +1,181 @@
 package com.example.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.Transaction
-import java.util.*
+import com.example.ui.theme.ColorIncome
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun TransactionHeatmap(
     transactions: List<Transaction>,
-    analysisType: String, // "EXPENSE" or "INCOME"
     modifier: Modifier = Modifier
 ) {
-    // Generate data for the last 140 days (20 weeks)
-    val numWeeks = 20
-    val numDays = numWeeks * 7
+    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    val todayStr = sdf.format(Date())
 
-    val heatmapData = remember(transactions, analysisType) {
-        val calendar = Calendar.getInstance()
-        // Reset time to start of day
-        calendar.set(Calendar.HOUR_OF_DAY, 0)
-        calendar.set(Calendar.MINUTE, 0)
-        calendar.set(Calendar.SECOND, 0)
-        calendar.set(Calendar.MILLISECOND, 0)
+    // Map of expenditure amounts per date
+    val expenses = transactions.filter { it.type == "EXPENSE" }
+    val expendituresByDate = expenses.groupBy { sdf.format(Date(it.timestamp)) }
+        .mapValues { (_, list) -> list.sumOf { it.amount * it.exchangeRate } }
 
-        // Ensure we end on a Saturday so that our columns align exactly to weeks (Sun-Sat).
-        // Let's find out how many days until Saturday
-        val currentDayOfWeek = calendar.get(Calendar.DAY_OF_WEEK) // Sunday is 1, Saturday is 7
-        val daysToSaturday = 7 - currentDayOfWeek
-        
-        // This is the theoretical "end date" (the upcoming Saturday if today isn't Saturday)
-        calendar.add(Calendar.DAY_OF_YEAR, daysToSaturday)
+    val daysOfWeek = listOf("周一", "周三", "周五", "周日")
 
-        val endTimestamp = calendar.timeInMillis
-        calendar.add(Calendar.DAY_OF_YEAR, -numDays + 1)
-        val startTimestamp = calendar.timeInMillis
-
-        // Group by day index relative to start
-        val dayAmounts = DoubleArray(numDays)
-
-        transactions.filter { it.type == analysisType }.forEach { tx ->
-            if (tx.timestamp in startTimestamp..endTimestamp) {
-                // calculate index with DST safety
-                val diffDays = ((tx.timestamp - startTimestamp + 12L * 3600 * 1000) / (1000 * 60 * 60 * 24)).toInt()
-                if (diffDays in 0 until numDays) {
-                    // For expenses, maybe ignore reimbursed ones, but standard reporting might include them.
-                    dayAmounts[diffDays] += tx.amount
-                }
-            }
-        }
-
-        val maxAmount = dayAmounts.maxOrNull()?.takeIf { it > 0 } ?: 1.0
-        
-        dayAmounts.map { amount ->
-            if (amount == 0.0) 0 else {
-                val intensity = (amount / maxAmount)
-                when {
-                    intensity < 0.25 -> 1
-                    intensity < 0.5 -> 2
-                    intensity < 0.75 -> 3
-                    else -> 4
-                }
-            }
-        }.toIntArray()
-    }
+    // We'll show a grid representing 6 columns (weeks) by 7 rows (days, Mon-Sun)
+    // Representing ~42 days back from "Sunday" of the current week.
+    val calendar = Calendar.getInstance()
+    // Align calendar to the upcoming Sunday or current day of week
+    val currentDayOfWeek = calendar.get(Calendar.DAY_OF_WEEK) // 1 = Sun, 2 = Mon ...
 
     Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("transaction_heatmap_card"),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(18.dp)
         ) {
-            val title = if (analysisType == "EXPENSE") "支出活跃度 (近20周)" else "收入活跃度 (近20周)"
             Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                text = "消费热力图 (Ledger Spend Density)",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            Spacer(modifier = Modifier.height(14.dp))
 
-            // Scrollable row if we want, or just fit it 
-            // 20 columns * (box + spacing) = 20 * 12 = 240dp... fits perfectly on a screen
+            Spacer(modifier = Modifier.height(16.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Day Labels (Mon, Wed, Fri)
+                // Day Labels on left
                 Column(
-                    modifier = Modifier.padding(end = 8.dp),
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    modifier = Modifier.width(36.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    val days = listOf("日", "一", "二", "三", "四", "五", "六")
-                    for (i in 0 until 7) {
+                    daysOfWeek.forEach { day ->
                         Text(
-                            text = if (i % 2 == 0) days[i] else "",
+                            text = day,
+                            style = MaterialTheme.typography.labelSmall,
                             fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.height(10.dp)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
 
-                // Grid 20 columns by 7 rows
-                for (col in 0 until numWeeks) {
-                    Column(
-                        modifier = Modifier.padding(end = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        for (row in 0 until 7) {
-                            val dayIndex = col * 7 + row
-                            val intensity = if (dayIndex < heatmapData.size) heatmapData[dayIndex] else 0
-                            
-                            val boxColor = if (intensity == 0) {
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
-                            } else {
-                                // Light/Dark mapping based on theme
-                                // For expenses, perhaps primary-based colors
-                                // 1: light, 4: dark
-                                val baseColor = if (analysisType == "EXPENSE") Color(0xFFC2185B) else Color(0xFF2E7D32)
-                                val alpha = 0.2f + (0.2f * intensity)
-                                baseColor.copy(alpha = alpha)
+                // 6 Weeks x 7 Days Grid
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    // Generate 6 weeks (each week has 7 days)
+                    // Index 0 = leftmost (oldest week), Index 5 = rightmost (this week)
+                    for (weekIndex in 0 until 6) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            for (dayIndex in 0 until 7) {
+                                // Calculate how many days to subtract relative to today
+                                val totalDaysAgo = (5 - weekIndex) * 7 + (6 - dayIndex)
+                                val cellCal = Calendar.getInstance().apply {
+                                    add(Calendar.DAY_OF_YEAR, -totalDaysAgo)
+                                }
+                                val cellDateStr = sdf.format(cellCal.time)
+                                val cellSpend = expendituresByDate[cellDateStr] ?: 0.0
+
+                                // Determine color block depending on spend amount
+                                val cellColor = when {
+                                    cellSpend == 0.0 -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    cellSpend < 15.0 -> ColorIncome.copy(alpha = 0.15f)
+                                    cellSpend < 60.0 -> ColorIncome.copy(alpha = 0.4f)
+                                    cellSpend < 200.0 -> ColorIncome.copy(alpha = 0.7f)
+                                    else -> ColorIncome // Darkest emerald for high-spend
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(1f)
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(cellColor)
+                                )
                             }
-                            
-                            Box(
-                                modifier = Modifier
-                                    .size(10.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(boxColor)
-                            )
                         }
                     }
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(14.dp))
+
+            // Heatmap key/legend
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("少", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = "极简",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Spacer(modifier = Modifier.width(4.dp))
-                for (i in 0..4) {
-                    val boxColor = if (i == 0) {
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
-                    } else {
-                        val baseColor = if (analysisType == "EXPENSE") Color(0xFFC2185B) else Color(0xFF2E7D32)
-                        val alpha = 0.2f + (0.2f * i)
-                        baseColor.copy(alpha = alpha)
-                    }
+                listOf(
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    ColorIncome.copy(alpha = 0.15f),
+                    ColorIncome.copy(alpha = 0.4f),
+                    ColorIncome.copy(alpha = 0.7f),
+                    ColorIncome
+                ).forEach { color ->
                     Box(
                         modifier = Modifier
                             .size(10.dp)
                             .clip(RoundedCornerShape(2.dp))
-                            .background(boxColor)
-                            .padding(horizontal = 2.dp)
+                            .background(color)
                     )
-                    Spacer(modifier = Modifier.width(2.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
                 }
                 Spacer(modifier = Modifier.width(2.dp))
-                Text("多", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = "频繁支出",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

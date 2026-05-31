@@ -1,38 +1,36 @@
 package com.example.data
 
 import androidx.compose.ui.graphics.Color
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.*
-import androidx.compose.ui.graphics.vector.ImageVector
 
-data class CategoryDef(
-    val id: String,
-    val name: String,
-    val icon: ImageVector,
-    val color: Color,
-    val type: String // "EXPENSE" or "INCOME"
-)
+enum class TransactionType {
+    EXPENSE, INCOME
+}
 
-object CategoryRegistry {
-    val expenseCategories = listOf(
-        CategoryDef("Food", "餐饮", Icons.Default.Favorite, Color(0xFFC85A32), "EXPENSE"),
-        CategoryDef("Shopping", "购物", Icons.Default.ShoppingCart, Color(0xFFA58D5F), "EXPENSE"),
-        CategoryDef("Transport", "交通", Icons.AutoMirrored.Filled.List, Color(0xFF386A20), "EXPENSE"),
-        CategoryDef("Digital", "数字订阅", Icons.Default.PlayArrow, Color(0xFF5C6BC0), "EXPENSE"),
-        CategoryDef("Entertainment", "娱乐", Icons.Default.Star, Color(0xFF8C5C82), "EXPENSE"),
-        CategoryDef("Housing", "居住", Icons.Default.Home, Color(0xFF865D36), "EXPENSE"),
-        CategoryDef("Others_Exp", "其他支出", Icons.Default.Info, Color(0xFF4C7D8A), "EXPENSE")
-    )
+enum class Category(
+    val displayName: String,
+    val colorHex: Long,
+    val defaultType: TransactionType
+) {
+    FOOD("餐饮", 0xFFF59E0B, TransactionType.EXPENSE),
+    SHOPPING("购物", 0xFF3B82F6, TransactionType.EXPENSE),
+    TRANSPORT("交通", 0xFF10B981, TransactionType.EXPENSE),
+    ENTERTAINMENT("娱乐", 0xFFEC4899, TransactionType.EXPENSE),
+    BILLS("固定杂费", 0xFF6366F1, TransactionType.EXPENSE),
+    SALARY("工资性收入", 0xFF10B981, TransactionType.INCOME),
+    INVESTMENT("投资收益", 0xFF8B5CF6, TransactionType.INCOME),
+    OTHER("其他账目", 0xFF64748B, TransactionType.EXPENSE);
 
-    val incomeCategories = listOf(
-        CategoryDef("Salary", "工资", Icons.Default.AccountCircle, Color(0xFF4E773E), "INCOME"),
-        CategoryDef("Bonus", "奖金", Icons.Default.Star, Color(0xFFD49E2A), "INCOME"),
-        CategoryDef("Investment", "理财", Icons.Default.Settings, Color(0xFF427A7B), "INCOME"),
-        CategoryDef("Others_Inc", "其他收入", Icons.Default.Info, Color(0xFF788374), "INCOME")
-    )
+    val color: Color
+        get() = Color(colorHex)
 
-    fun getCategoryById(id: String): CategoryDef? {
-        return (expenseCategories + incomeCategories).firstOrNull { it.id == id }
+    companion object {
+        fun fromName(name: String): Category {
+            return values().firstOrNull { 
+                it.name.equals(name, ignoreCase = true) || 
+                it.displayName == name || 
+                name.contains(it.displayName) || 
+                it.displayName.contains(name) 
+            } ?: OTHER
+        }
     }
 }

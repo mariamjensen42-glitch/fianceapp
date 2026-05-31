@@ -1,74 +1,73 @@
 package com.example.ui.theme
 
-import android.os.Build
+import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 
 private val DarkColorScheme = darkColorScheme(
-    primary = NaturalPrimaryDark,
-    onPrimary = NaturalOnPrimaryDark,
-    primaryContainer = NaturalPrimaryContainerDark,
-    onPrimaryContainer = NaturalOnPrimaryContainerDark,
-    secondary = NaturalSecondaryDark,
-    onSecondary = NaturalOnSecondaryDark,
-    secondaryContainer = NaturalSecondaryContainerDark,
-    onSecondaryContainer = NaturalOnSecondaryContainerDark,
-    tertiary = NaturalTertiaryDark,
-    onTertiary = NaturalOnTertiaryDark,
-    background = NaturalBackgroundDark,
-    onBackground = NaturalOnBackgroundDark,
-    surface = NaturalSurfaceDark,
-    onSurface = NaturalOnSurfaceDark,
-    surfaceVariant = NaturalSurfaceVariantDark,
-    onSurfaceVariant = NaturalOnSurfaceVariantDark,
-    outline = NaturalOutlineDark,
-    outlineVariant = NaturalOutlineVariantDark
+    primary = DarkPrimary,
+    onPrimary = DarkOnPrimary,
+    primaryContainer = DarkPrimaryContainer,
+    onPrimaryContainer = DarkOnPrimaryContainer,
+    secondary = DarkSecondary,
+    onSecondary = DarkOnSecondary,
+    background = DarkBackground,
+    onBackground = DarkOnBackground,
+    surface = DarkSurface,
+    onSurface = DarkOnSurface,
+    surfaceVariant = DarkSurfaceVariant,
+    onSurfaceVariant = DarkOnSurfaceVariant,
+    outline = DarkOutline
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = NaturalPrimaryLight,
-    onPrimary = NaturalOnPrimaryLight,
-    primaryContainer = NaturalPrimaryContainerLight,
-    onPrimaryContainer = NaturalOnPrimaryContainerLight,
-    secondary = NaturalSecondaryLight,
-    onSecondary = NaturalOnSecondaryLight,
-    secondaryContainer = NaturalSecondaryContainerLight,
-    onSecondaryContainer = NaturalOnSecondaryContainerLight,
-    tertiary = NaturalTertiaryLight,
-    onTertiary = NaturalOnTertiaryLight,
-    background = NaturalBackgroundLight,
-    onBackground = NaturalOnBackgroundLight,
-    surface = NaturalSurfaceLight,
-    onSurface = NaturalOnSurfaceLight,
-    surfaceVariant = NaturalSurfaceVariantLight,
-    onSurfaceVariant = NaturalOnSurfaceVariantLight,
-    outline = NaturalOutlineLight,
-    outlineVariant = NaturalOutlineVariantLight
+    primary = LightPrimary,
+    onPrimary = LightOnPrimary,
+    primaryContainer = LightPrimaryContainer,
+    onPrimaryContainer = LightOnPrimaryContainer,
+    secondary = LightSecondary,
+    onSecondary = LightOnSecondary,
+    background = LightBackground,
+    onBackground = LightOnBackground,
+    surface = LightSurface,
+    onSurface = LightOnSurface,
+    surfaceVariant = LightSurfaceVariant,
+    onSurfaceVariant = LightOnSurfaceVariant,
+    outline = LightOutline
 )
 
 @Composable
-fun MyApplicationTheme(
-  darkTheme: Boolean = isSystemInDarkTheme(),
-  // Disable dynamic color by default for Natural Tones
-  dynamicColor: Boolean = false,
-  content: @Composable () -> Unit,
+fun RemixLedgerTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit
 ) {
-  val colorScheme =
-    when {
-      dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-        val context = LocalContext.current
-        if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-      }
+    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+    val view = LocalView.current
 
-      darkTheme -> DarkColorScheme
-      else -> LightColorScheme
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as? Activity)?.window
+            if (window != null) {
+                window.statusBarColor = colorScheme.background.toArgb()
+                window.navigationBarColor = colorScheme.surface.toArgb()
+                WindowCompat.getInsetsController(window, view).apply {
+                    isAppearanceLightStatusBars = !darkTheme
+                    isAppearanceLightNavigationBars = !darkTheme
+                }
+            }
+        }
     }
 
-  MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
+    MaterialTheme(
+        colorScheme = colorScheme,
+        typography = Typography,
+        content = content
+    )
 }

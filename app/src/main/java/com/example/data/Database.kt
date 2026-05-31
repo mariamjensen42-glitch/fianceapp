@@ -1,27 +1,64 @@
 package com.example.data
 
 import android.content.Context
-import androidx.room.*
+import androidx.room.Dao
+import androidx.room.Database
+import androidx.room.Delete
+import androidx.room.Entity
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.PrimaryKey
+import androidx.room.Query
+import androidx.room.Room
+import androidx.room.RoomDatabase
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
+
+// --- Entities ---
 
 @Entity(tableName = "transactions")
 data class Transaction(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val title: String,
+    @PrimaryKey(autoGenerate = true) val id: Long = 0L,
     val amount: Double,
     val type: String, // "EXPENSE" or "INCOME"
-    val category: String, // "Food", "Entertainment", "Transport", "Shopping", "Housing", "Salary", "Bonus", "Others"
-    val timestamp: Long,
-    val notes: String = "",
-    val tags: String = "",
-    val account: String = "默认账户",
-    val isReimbursable: Boolean = false,
-    val reimbursementStatus: String = "NONE" // "NONE", "PENDING", "REIMBURSED"
+    val category: String, // Category name
+    val note: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val currency: String = "CNY",
+    val exchangeRate: Double = 1.0
 )
+
+@Entity(tableName = "subscriptions")
+data class Subscription(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0L,
+    val title: String,
+    val amount: Double, // Cost per period
+    val category: String,
+    val billingCycle: String, // "MONTHLY" or "ANNUALLY"
+    val nextBillingDate: Long,
+    val isActive: Boolean = true,
+    val currency: String = "CNY",
+    val exchangeRate: Double = 1.0
+)
+
+@Entity(tableName = "quick_templates")
+data class QuickTemplate(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0L,
+    val name: String,
+    val amount: Double,
+    val type: String, // "EXPENSE" or "INCOME"
+    val category: String, // Category name
+    val note: String,
+    val usageCount: Int = 0,
+    val currency: String = "CNY",
+    val exchangeRate: Double = 1.0
+)
+
+// --- DAOs ---
 
 @Dao
 interface TransactionDao {
-    @Query("SELECT * FROM transactions ORDER BY timestamp DESC, id DESC")
+    @Query("SELECT * FROM transactions ORDER BY timestamp DESC")
     fun getAllTransactions(): Flow<List<Transaction>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -30,79 +67,59 @@ interface TransactionDao {
     @Update
     suspend fun updateTransaction(transaction: Transaction)
 
+    @Delete
+    suspend fun deleteTransaction(transaction: Transaction)
+
     @Query("DELETE FROM transactions WHERE id = :id")
-    suspend fun deleteTransactionById(id: Int)
+    suspend fun deleteTransactionById(id: Long)
 
-    @Query("SELECT COUNT(*) FROM transactions")
-    suspend fun getCount(): Int
+    @Query("DELETE FROM transactions")
+    suspend fun clearAllTransactions()
 }
-
-@Entity(tableName = "subscriptions")
-data class Subscription(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val title: String,
-    val amount: Double,
-    val cycle: String, // "MONTHLY" or "YEARLY"
-    val category: String,
-    val nextBillingDate: Long,
-    val notes: String = ""
-)
 
 @Dao
 interface SubscriptionDao {
-    @Query("SELECT * FROM subscriptions ORDER BY id DESC")
+    @Query("SELECT * FROM subscriptions ORDER BY nextBillingDate ASC")
     fun getAllSubscriptions(): Flow<List<Subscription>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSubscription(subscription: Subscription)
 
+    @Update
+    suspend fun updateSubscription(subscription: Subscription)
+
+    @Delete
+    suspend fun deleteSubscription(subscription: Subscription)
+
     @Query("DELETE FROM subscriptions WHERE id = :id")
-    suspend fun deleteSubscriptionById(id: Int)
+    suspend fun deleteSubscriptionById(id: Long)
 }
-
-@Entity(tableName = "custom_categories")
-data class CustomCategory(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val name: String,
-    val isExpense: Boolean = true
-)
 
 @Dao
-interface CustomCategoryDao {
-    @Query("SELECT * FROM custom_categories ORDER BY id DESC")
-    fun getAllCustomCategories(): Flow<List<CustomCategory>>
+interface QuickTemplateDao {
+    @Query("SELECT * FROM quick_templates ORDER BY usageCount DESC, id ASC")
+    fun getAllTemplates(): Flow<List<QuickTemplate>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertCustomCategory(customCategory: CustomCategory)
+    suspend fun insertTemplate(template: QuickTemplate)
 
-    @Query("DELETE FROM custom_categories WHERE id = :id")
-    suspend fun deleteCustomCategory(id: Int)
+    @Update
+    suspend fun updateTemplate(template: QuickTemplate)
+
+    @Delete
+    suspend fun deleteTemplate(template: QuickTemplate)
+
+    @Query("DELETE FROM quick_templates WHERE id = :id")
+    suspend fun deleteTemplateById(id: Long)
 }
 
-@Entity(tableName = "budgets")
-data class Budget(
-    @PrimaryKey val id: String, // "total" or "category_[categoryId]"
-    val amount: Double
-)
+// --- AppDatabase ---
 
-@Dao
-interface BudgetDao {
-    @Query("SELECT * FROM budgets")
-    fun getAllBudgets(): Flow<List<Budget>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertBudget(budget: Budget)
-
-    @Query("DELETE FROM budgets WHERE id = :id")
-    suspend fun deleteBudget(id: String)
-}
-
-@Database(entities = [Transaction::class, Subscription::class, CustomCategory::class, Budget::class], version = 7, exportSchema = false)
+@Database(entities = [Transaction::class, Subscription::class, QuickTemplate::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun transactionDao(): TransactionDao
     abstract fun subscriptionDao(): SubscriptionDao
-    abstract fun customCategoryDao(): CustomCategoryDao
-    abstract fun budgetDao(): BudgetDao
+    abstract fun quickTemplateDao(): QuickTemplateDao
 
     companion object {
         @Volatile
@@ -115,8 +132,8 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "ledger_database"
                 )
-                .fallbackToDestructiveMigration(dropAllTables = true)
-                .build()
+                    .fallbackToDestructiveMigration()
+                    .build()
                 INSTANCE = instance
                 instance
             }
@@ -124,54 +141,71 @@ abstract class AppDatabase : RoomDatabase() {
     }
 }
 
-class TransactionRepository(
-    private val transactionDao: TransactionDao,
-    private val subscriptionDao: SubscriptionDao,
-    private val customCategoryDao: CustomCategoryDao,
-    private val budgetDao: BudgetDao
-) {
+// --- Unified Repository Pattern ---
+
+class LedgerRepository(private val db: AppDatabase) {
+    private val transactionDao = db.transactionDao()
+    private val subscriptionDao = db.subscriptionDao()
+    private val quickTemplateDao = db.quickTemplateDao()
+
+    // Transaction Queries
     val allTransactions: Flow<List<Transaction>> = transactionDao.getAllTransactions()
+
+    suspend fun insertTransaction(transaction: Transaction) {
+        transactionDao.insertTransaction(transaction)
+    }
+
+    suspend fun updateTransaction(transaction: Transaction) {
+        transactionDao.updateTransaction(transaction)
+    }
+
+    suspend fun deleteTransaction(transaction: Transaction) {
+        transactionDao.deleteTransaction(transaction)
+    }
+
+    suspend fun deleteTransactionById(id: Long) {
+        transactionDao.deleteTransactionById(id)
+    }
+
+    suspend fun clearAllTransactions() {
+        transactionDao.clearAllTransactions()
+    }
+
+    // Subscription Queries
     val allSubscriptions: Flow<List<Subscription>> = subscriptionDao.getAllSubscriptions()
-    val allCustomCategories: Flow<List<CustomCategory>> = customCategoryDao.getAllCustomCategories()
-    val allBudgets: Flow<List<Budget>> = budgetDao.getAllBudgets()
 
     suspend fun insertSubscription(subscription: Subscription) {
         subscriptionDao.insertSubscription(subscription)
     }
 
-    suspend fun deleteSubscriptionById(id: Int) {
+    suspend fun updateSubscription(subscription: Subscription) {
+        subscriptionDao.updateSubscription(subscription)
+    }
+
+    suspend fun deleteSubscription(subscription: Subscription) {
+        subscriptionDao.deleteSubscription(subscription)
+    }
+
+    suspend fun deleteSubscriptionById(id: Long) {
         subscriptionDao.deleteSubscriptionById(id)
     }
 
-    suspend fun insert(transaction: Transaction) {
-        transactionDao.insertTransaction(transaction)
+    // Quick Template Queries
+    val allTemplates: Flow<List<QuickTemplate>> = quickTemplateDao.getAllTemplates()
+
+    suspend fun insertTemplate(template: QuickTemplate) {
+        quickTemplateDao.insertTemplate(template)
     }
 
-    suspend fun update(transaction: Transaction) {
-        transactionDao.updateTransaction(transaction)
+    suspend fun updateTemplate(template: QuickTemplate) {
+        quickTemplateDao.updateTemplate(template)
     }
 
-    suspend fun deleteById(id: Int) {
-        transactionDao.deleteTransactionById(id)
+    suspend fun deleteTemplate(template: QuickTemplate) {
+        quickTemplateDao.deleteTemplate(template)
     }
 
-    suspend fun getCount(): Int {
-        return transactionDao.getCount()
-    }
-
-    suspend fun insertCustomCategory(customCategory: CustomCategory) {
-        customCategoryDao.insertCustomCategory(customCategory)
-    }
-
-    suspend fun deleteCustomCategoryById(id: Int) {
-        customCategoryDao.deleteCustomCategory(id)
-    }
-
-    suspend fun insertBudget(budget: Budget) {
-        budgetDao.insertBudget(budget)
-    }
-
-    suspend fun deleteBudget(id: String) {
-        budgetDao.deleteBudget(id)
+    suspend fun deleteTemplateById(id: Long) {
+        quickTemplateDao.deleteTemplateById(id)
     }
 }
