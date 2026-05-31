@@ -35,6 +35,9 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
+      - name: List build outputs
+        run: find app/build/outputs -type f -name "*.apk" 2>/dev/null || echo "No APK found in standard location"
+
       - name: Create Release and Upload APK
         uses: softprops/action-gh-release@v2
         with:
